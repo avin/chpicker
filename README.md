@@ -8,7 +8,7 @@
 npm install -g @avinlab/chpicker
 ```
 
-## Запусе
+## Запуск
 
 ```sh
 chpicker <BITBUCKET_COMMIT_URL> <RELEASE_VERSION>
