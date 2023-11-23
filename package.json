@@ -1,0 +1,26 @@
+{
+  "name": "chpicker",
+  "version": "0.1.0",
+  "description": "",
+  "author": "Avin Lambrero <avin.github@gmail.com>",
+  "license": "MIT",
+  "main": "main.js",
+  "bin": {
+    "chpicker": "main.js"
+  },
+  "scripts": {
+    "start": "node main.js"
+  },
+  "files": [
+    "main.js"
+  ],
+  "keywords": [
+    "git",
+    "cherry-pick",
+    "bitbucket"
+  ],
+  "dependencies": {
+    "open": "^8.4.2",
+    "shelljs": "^0.8.5"
+  }
+}
