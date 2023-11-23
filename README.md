@@ -5,7 +5,7 @@
 ## Установка
 
 ```sh
-npm install -g chpicker
+npm install -g @avinlab/chpicker
 ```
 
 ## Запусе
@@ -17,5 +17,5 @@ chpicker <BITBUCKET_COMMIT_URL> <RELEASE_VERSION>
 Например:
 
 ```sh
-chpicker https://mybitbucker.com/projects/PROJECT/repos/REPO/commits/482849e20d594598e953edee145d54779e15c0dc 1.284
+chpicker https://mybitbucker.com/projects/PROJECT/repos/REPO/commits/482849e20d594598e953edee145d54779e15c0dc 1.101
 ```
