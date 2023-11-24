@@ -70,7 +70,7 @@ function parseCommitUrl(url) {
 
 function main() {
   const commitUrl = process.argv[2];
-  const releaseVersion = process.argv[3];
+  const releaseVersion = (process.argv[3] || '').replace(/\.x$/, '').replace(/^release\//, '');
 
   checkReleaseVersion(releaseVersion);
 
@@ -87,7 +87,7 @@ function main() {
 
   showOperation('Клонирование репозитория')
   if (shell.exec(`git clone ${url}/scm/${project}/${repo}.git ${folderName}`, {silent: true}).code !== 0) {
-    shell.echo('Ошибка: Не удалось клонировать репозиторий');
+    shell.echo('Не удалось клонировать репозиторий');
     shell.exit(1);
   }
 
