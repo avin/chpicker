@@ -12,7 +12,8 @@
     "start": "node main.js"
   },
   "files": [
-    "main.js"
+    "main.js",
+    "src"
   ],
   "keywords": [
     "git",
