@@ -2,6 +2,7 @@ const path = require('path');
 const shell = require('shelljs');
 const open = require('open');
 const { promptInput } = require('./cli');
+const { registerWorkDir, unregisterWorkDir } = require('./cleanup');
 const { createPullRequest, getPullRequest } = require('./bitbucket');
 const { ensureWorkDir, getAccessToken, loadConfig, saveConfig } = require('./config');
 const {
@@ -62,6 +63,7 @@ async function handlePullRequestMerge(pullRequestUrl) {
   const folderPath = path.join(workDir, `__chpicker__${parsed.repo}`);
   const rootDir = shell.pwd().toString();
 
+  registerWorkDir(folderPath);
   shell.rm('-rf', folderPath);
 
   showOperation('Клонирование репозитория');
@@ -87,6 +89,7 @@ async function handlePullRequestMerge(pullRequestUrl) {
   showOperation('Удаляем директорию с кодом');
   shell.cd(rootDir);
   shell.rm('-rf', folderPath);
+  unregisterWorkDir(folderPath);
 
   showOperation('Готово');
 }
@@ -95,6 +98,8 @@ async function handleCherryPick(commitUrl, releaseVersionRaw) {
   const releaseVersion = releaseVersionRaw.replace(/\.x$/, '').replace(/^release\//, '');
 
   checkReleaseVersion(releaseVersion);
+
+  const token = getAccessToken();
 
   const {
     url,
@@ -107,6 +112,7 @@ async function handleCherryPick(commitUrl, releaseVersionRaw) {
   const folderPath = path.join(workDir, `__chpicker__${repo}`);
   const rootDir = shell.pwd().toString();
 
+  registerWorkDir(folderPath);
   shell.rm('-rf', folderPath);
 
   showOperation('Клонирование репозитория');
@@ -143,7 +149,6 @@ async function handleCherryPick(commitUrl, releaseVersionRaw) {
   showOperation('Push новой ветки на сервер');
   pushBranch(cherryPickBranchName);
 
-  const token = getAccessToken();
   const pullRequestPayload = {
     title: `${taskNumber} | 🍒 ${releaseVersion}.x | ${pullRequestName}`,
     description: `Pull request #${pullRequestNumber}`,
@@ -173,6 +178,7 @@ async function handleCherryPick(commitUrl, releaseVersionRaw) {
   showOperation('Удаляем директорию с кодом');
   shell.cd(rootDir);
   shell.rm('-rf', folderPath);
+  unregisterWorkDir(folderPath);
 
   const createdPullRequestId = createdPullRequest?.id;
   if (!createdPullRequestId) {

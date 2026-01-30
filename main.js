@@ -2,8 +2,27 @@
 
 const { parseArgs } = require('./src/cli');
 const { handleCherryPick, handlePullRequestMerge, handleTokenSave } = require('./src/flows');
+const { cleanupWorkDirs } = require('./src/cleanup');
 const { fatalError } = require('./src/logger');
 const { parsePullRequestUrl } = require('./src/parsers');
+
+process.on('SIGINT', () => {
+  cleanupWorkDirs();
+  process.exit(1);
+});
+
+process.on('SIGTERM', () => {
+  cleanupWorkDirs();
+  process.exit(1);
+});
+
+process.on('uncaughtException', (error) => {
+  fatalError(error?.message || 'Неизвестная ошибка');
+});
+
+process.on('unhandledRejection', (error) => {
+  fatalError(error?.message || 'Неизвестная ошибка');
+});
 
 async function main() {
   const parsedArgs = parseArgs(process.argv.slice(2));

@@ -46,6 +46,21 @@ function getAccessToken() {
   return token;
 }
 
+function getProxyUrl() {
+  const config = loadConfig();
+  const proxyValue = config.proxy || config.httpProxy;
+
+  if (!proxyValue) {
+    return null;
+  }
+
+  try {
+    return new URL(proxyValue);
+  } catch (error) {
+    fatalError('Неверный формат proxy в конфиге');
+  }
+}
+
 function ensureWorkDir() {
   const workDir = path.join(getAppDir(), 'work');
   if (!shell.test('-d', workDir)) {
@@ -57,6 +72,7 @@ function ensureWorkDir() {
 module.exports = {
   ensureWorkDir,
   getAccessToken,
+  getProxyUrl,
   loadConfig,
   saveConfig
 };
