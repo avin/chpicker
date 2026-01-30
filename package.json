@@ -1,6 +1,6 @@
 {
   "name": "@avinlab/chpicker",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "",
   "author": "Avin Lambrero <avin.github@gmail.com>",
   "license": "MIT",
@@ -12,7 +12,8 @@
     "start": "node main.js"
   },
   "files": [
-    "main.js"
+    "main.js",
+    "src"
   ],
   "keywords": [
     "git",
