@@ -3,7 +3,13 @@ const shell = require('shelljs');
 const open = require('open');
 const { promptInput } = require('./cli');
 const { registerWorkDir, unregisterWorkDir } = require('./cleanup');
-const { createPullRequest, getPullRequest } = require('./bitbucket');
+const {
+  addPullRequestReviewer,
+  createPullRequest,
+  getDefaultReviewers,
+  getRepository,
+  getPullRequest
+} = require('./bitbucket');
 const { ensureWorkDir, getAccessToken, loadConfig, saveConfig } = require('./config');
 const {
   cherryPickNoCommit,
@@ -40,6 +46,106 @@ async function handleTokenSave(bbtokenValue) {
   });
 
   showOperation('Токен сохранён');
+}
+
+function addReviewerToMap(reviewerMap, userLike) {
+  const user = userLike?.user || userLike;
+  const userName = user?.name || null;
+  const userSlug = user?.slug || null;
+  const key = userName || userSlug;
+
+  if (!key) {
+    return;
+  }
+
+  reviewerMap.set(key, {
+    user: userName ? { name: userName } : { slug: userSlug }
+  });
+}
+
+function getErrorMessage(error) {
+  return error?.message || `${error}`;
+}
+
+function getReviewerKey(userLike) {
+  return userLike?.user?.name
+    || userLike?.user?.slug
+    || userLike?.name
+    || userLike?.slug
+    || null;
+}
+
+function getExistingReviewerKeysFromPullRequest(pullRequest) {
+  const keys = new Set();
+  const reviewers = Array.isArray(pullRequest?.reviewers) ? pullRequest.reviewers : [];
+  const participants = Array.isArray(pullRequest?.participants) ? pullRequest.participants : [];
+
+  reviewers.forEach((reviewer) => {
+    const key = getReviewerKey(reviewer);
+    if (key) {
+      keys.add(key);
+    }
+  });
+
+  participants.forEach((participant) => {
+    if (participant?.role !== 'REVIEWER') {
+      return;
+    }
+
+    const key = getReviewerKey(participant);
+    if (key) {
+      keys.add(key);
+    }
+  });
+
+  return keys;
+}
+
+function getPullRequestAuthorKey(pullRequest) {
+  return pullRequest?.author?.user?.name
+    || pullRequest?.author?.user?.slug
+    || null;
+}
+
+function addReviewersFromUsers(reviewerMap, users) {
+  if (!Array.isArray(users)) {
+    return;
+  }
+
+  users.forEach((user) => addReviewerToMap(reviewerMap, user));
+}
+
+function extractDefaultReviewers(reviewersPayload) {
+  const reviewerMap = new Map();
+  const values = [];
+
+  if (Array.isArray(reviewersPayload)) {
+    values.push(...reviewersPayload);
+  }
+
+  if (Array.isArray(reviewersPayload?.values)) {
+    values.push(...reviewersPayload.values);
+  }
+
+  if (Array.isArray(reviewersPayload?.reviewers)) {
+    values.push(...reviewersPayload.reviewers);
+  }
+
+  values.forEach((item) => {
+    const directUser = item?.user || item;
+    if (directUser?.name || directUser?.slug) {
+      addReviewerToMap(reviewerMap, directUser);
+      return;
+    }
+
+    addReviewersFromUsers(reviewerMap, item?.reviewers);
+
+    if (Array.isArray(item?.reviewerGroups)) {
+      item.reviewerGroups.forEach((group) => addReviewersFromUsers(reviewerMap, group?.users));
+    }
+  });
+
+  return [...reviewerMap.values()];
 }
 
 async function handlePullRequestMerge(pullRequestUrl) {
@@ -149,11 +255,58 @@ async function handleCherryPick(commitUrl, releaseVersionRaw) {
   showOperation('Push новой ветки на сервер');
   pushBranch(cherryPickBranchName);
 
+  const sourceRefId = `refs/heads/${cherryPickBranchName}`;
+  const targetRefId = `refs/heads/${releaseBranchName}`;
+  const bbTargetRepo = { url, project, repo };
+  let defaultReviewers = [];
+  let repoId = null;
+
+  try {
+    const repository = await getRepository(bbTargetRepo, token);
+    repoId = repository?.id || null;
+  } catch (error) {
+    showOperation(`Не удалось получить id репозитория (${getErrorMessage(error)}), продолжаем без sourceRepoId/targetRepoId`);
+  }
+
+  try {
+    showOperation('Получение дефолтных ревьюверов');
+    const defaultReviewersPayload = await getDefaultReviewers(
+      bbTargetRepo,
+      token,
+      sourceRefId,
+      targetRefId,
+      repoId,
+      repoId
+    );
+    defaultReviewers = extractDefaultReviewers(defaultReviewersPayload);
+
+    if (defaultReviewers.length === 0) {
+      const sourceBranchRef = sourceRefId.replace(/^refs\/heads\//, '');
+      const targetBranchRef = targetRefId.replace(/^refs\/heads\//, '');
+      if (sourceBranchRef !== sourceRefId || targetBranchRef !== targetRefId) {
+        showOperation('Повторный поиск дефолтных ревьюверов по коротким именам веток');
+        const fallbackReviewersPayload = await getDefaultReviewers(
+          bbTargetRepo,
+          token,
+          sourceBranchRef,
+          targetBranchRef,
+          repoId,
+          repoId
+        );
+        defaultReviewers = extractDefaultReviewers(fallbackReviewersPayload);
+      }
+    }
+
+    showOperation(`Найдено дефолтных ревьюверов: ${defaultReviewers.length}`);
+  } catch (error) {
+    showOperation(`Не удалось получить дефолтных ревьюверов (${getErrorMessage(error)}), PR будет создан без них`);
+  }
+
   const pullRequestPayload = {
     title: `${taskNumber} | 🍒 ${releaseVersion}.x | ${pullRequestName}`,
     description: `Pull request #${pullRequestNumber}`,
     fromRef: {
-      id: `refs/heads/${cherryPickBranchName}`,
+      id: sourceRefId,
       repository: {
         slug: repo,
         project: {
@@ -162,7 +315,7 @@ async function handleCherryPick(commitUrl, releaseVersionRaw) {
       }
     },
     toRef: {
-      id: `refs/heads/${releaseBranchName}`,
+      id: targetRefId,
       repository: {
         slug: repo,
         project: {
@@ -172,8 +325,12 @@ async function handleCherryPick(commitUrl, releaseVersionRaw) {
     }
   };
 
+  if (defaultReviewers.length > 0) {
+    pullRequestPayload.reviewers = defaultReviewers;
+  }
+
   showOperation('Создание pull-request');
-  const createdPullRequest = await createPullRequest({ url, project, repo }, token, pullRequestPayload);
+  const createdPullRequest = await createPullRequest(bbTargetRepo, token, pullRequestPayload);
 
   showOperation('Удаляем директорию с кодом');
   shell.cd(rootDir);
@@ -183,6 +340,32 @@ async function handleCherryPick(commitUrl, releaseVersionRaw) {
   const createdPullRequestId = createdPullRequest?.id;
   if (!createdPullRequestId) {
     fatalError('Не удалось создать pull-request');
+  }
+
+  if (defaultReviewers.length > 0) {
+    const existingReviewerKeys = getExistingReviewerKeysFromPullRequest(createdPullRequest);
+    const pullRequestAuthorKey = getPullRequestAuthorKey(createdPullRequest);
+    const reviewersToAdd = defaultReviewers.filter((reviewer) => {
+      const key = getReviewerKey(reviewer);
+      return key && key !== pullRequestAuthorKey && !existingReviewerKeys.has(key);
+    });
+
+    if (reviewersToAdd.length > 0) {
+      showOperation('Fallback: добавление дефолтных ревьюверов в созданный pull-request');
+      for (const reviewer of reviewersToAdd) {
+        const userName = reviewer?.user?.name || reviewer?.user?.slug || '<unknown>';
+        try {
+          await addPullRequestReviewer(
+            bbTargetRepo,
+            token,
+            createdPullRequestId,
+            reviewer.user
+          );
+        } catch (error) {
+          showOperation(`Не удалось добавить ревьювера ${userName}: ${getErrorMessage(error)}`);
+        }
+      }
+    }
   }
 
   showOperation('Открываем созданный pull-request');
