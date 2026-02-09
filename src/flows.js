@@ -1,3 +1,4 @@
+const fs = require('fs');
 const path = require('path');
 const shell = require('shelljs');
 const open = require('open');
@@ -148,6 +149,16 @@ function extractDefaultReviewers(reviewersPayload) {
   return [...reviewerMap.values()];
 }
 
+function createUniqueWorkFolder(workDir, repoName) {
+  const safeRepoName = `${repoName || 'repo'}`
+    .trim()
+    .replace(/[<>:"/\\|?*\x00-\x1F]/g, '-')
+    .replace(/\s+/g, '-')
+    .replace(/[. ]+$/, '') || 'repo';
+
+  return fs.mkdtempSync(path.join(workDir, `${safeRepoName}-`));
+}
+
 async function handlePullRequestMerge(pullRequestUrl) {
   const parsed = parsePullRequestUrl(pullRequestUrl);
   if (!parsed) {
@@ -166,11 +177,10 @@ async function handlePullRequestMerge(pullRequestUrl) {
   }
 
   const workDir = ensureWorkDir();
-  const folderPath = path.join(workDir, `__chpicker__${parsed.repo}`);
+  const folderPath = createUniqueWorkFolder(workDir, parsed.repo);
   const rootDir = shell.pwd().toString();
 
   registerWorkDir(folderPath);
-  shell.rm('-rf', folderPath);
 
   showOperation('Клонирование репозитория');
   cloneRepo(`${parsed.url}/scm/${parsed.project}/${parsed.repo}.git`, folderPath);
@@ -215,11 +225,10 @@ async function handleCherryPick(commitUrl, releaseVersionRaw) {
   } = parseCommitUrl(commitUrl);
 
   const workDir = ensureWorkDir();
-  const folderPath = path.join(workDir, `__chpicker__${repo}`);
+  const folderPath = createUniqueWorkFolder(workDir, repo);
   const rootDir = shell.pwd().toString();
 
   registerWorkDir(folderPath);
-  shell.rm('-rf', folderPath);
 
   showOperation('Клонирование репозитория');
   cloneRepo(`${url}/scm/${project}/${repo}.git`, folderPath);
